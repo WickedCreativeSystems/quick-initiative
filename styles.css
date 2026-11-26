@@ -353,3 +353,10 @@
 		opacity: 1;
 	}
 }
+
+.qi .qi-players {
+	margin-left: auto;
+}
+.qi-players-link {
+	font-weight: 600;
+}

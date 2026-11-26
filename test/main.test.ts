@@ -137,3 +137,32 @@ describe('the party', () => {
 		expect(put).toBe('```initiative\nparty\n2x [[Goblin]]\n```\n');
 	});
 });
+
+describe('the Players button', () => {
+	it('without DM Screen, opens a note about it with the counted link', async () => {
+		const { el, click } = await setup(NOTE, { Goblin: GOBLIN });
+		const open = (await import('./obsidian-shim')).Modal.prototype.open;
+		let text = '';
+		(await import('./obsidian-shim')).Modal.prototype.open = function (this: { onOpen(): void; contentEl: HTMLElement }) { this.onOpen(); text = this.contentEl.innerHTML; };
+		await click('.qi-players');
+		(await import('./obsidian-shim')).Modal.prototype.open = open;
+		expect(text).toContain('$12 once');
+		expect(text).toContain('/go/dm-screen/quick-initiative');
+	});
+	it('with DM Screen, shares the table and sends the fight at once', async () => {
+		const { app, el, click } = await setup(NOTE, { Goblin: GOBLIN });
+		let shared = 0;
+		const table = { sharing: false, share: async () => { shared++; table.sharing = true; } };
+		(app as never as { plugins: unknown }).plugins = { plugins: { 'dm-screen': table } };
+		const before = app.events.length;
+		await click('.qi-players');
+		expect(shared).toBe(1);
+		expect(app.events.length).toBe(before + 1);
+		expect(app.events.at(-1)!.name).toBe('quick-initiative:change');
+		void el;
+	});
+	it('is gone when turned off in settings', async () => {
+		const { el } = await setup(NOTE, { Goblin: GOBLIN }, { playersButton: false });
+		expect(el.querySelector('.qi-players')).toBeNull();
+	});
+});

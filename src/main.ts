@@ -2,6 +2,7 @@ import {
 	App,
 	Editor,
 	MarkdownPostProcessorContext,
+	Modal,
 	Plugin,
 	PluginSettingTab,
 	SettingDefinitionItem,
@@ -30,9 +31,19 @@ interface Settings {
 	rollHp: boolean; // roll creature HP from hit dice instead of taking the average
 	skipDown: boolean; // skip creatures at 0 HP when moving to the next turn
 	party: string; // the players, one per line, brought in by a `party` line
+	playersButton: boolean; // the Players button in the tracker (DM Screen, the README's Ads section)
 }
 
-const DEFAULT_SETTINGS: Settings = { rollHp: false, skipDown: true, party: '' };
+const DEFAULT_SETTINGS: Settings = { rollHp: false, skipDown: true, party: '', playersButton: true };
+
+// Where the Players button sends someone who doesn't have DM Screen; the tail counts the clicks (site's _redirects).
+export const DM_SCREEN_URL = 'https://bulkhead.bananafest-destiny.com/go/dm-screen/quick-initiative';
+
+/** What Quick Initiative uses of DM Screen's plugin: share() opens the table, or shows its link if open. */
+interface PlayerTable {
+	sharing: boolean;
+	share(): Promise<void>;
+}
 
 const TEMPLATE = '```initiative\nAria player init 15 hp 31 ac 15\n2x [[Goblin]]\n```\n';
 const PARTY_TEMPLATE = '```initiative\nparty\n2x [[Goblin]]\n```\n';
@@ -129,6 +140,13 @@ export default class QuickInitiativePlugin extends Plugin {
 		this.app.workspace.trigger('quick-initiative:change', ev);
 	}
 
+	/** DM Screen's shared player table, when DM Screen is installed and turned on. */
+	playerTable(): PlayerTable | null {
+		const all = (this.app as unknown as { plugins?: { plugins?: Record<string, Partial<PlayerTable> | undefined> } }).plugins?.plugins;
+		const t = all?.['dm-screen'];
+		return t && typeof t.share === 'function' ? (t as PlayerTable) : null;
+	}
+
 	async loadSettings() {
 		const saved = (await this.loadData()) as Partial<Settings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved ?? {});
@@ -190,6 +208,9 @@ class Tracker {
 				endCombat(enc);
 				void this.commit();
 			}, 'End combat');
+		}
+		if (this.plugin.settings.playersButton) {
+			this.button(tools, 'cast', 'Players', 'qi-players', () => void this.showPlayers(), 'Show this fight on your players\' phones');
 		}
 
 		const list = root.createDiv({ cls: 'qi-list' });
@@ -397,6 +418,18 @@ class Tracker {
 		}
 	}
 
+	/** With DM Screen: share the table and send this fight straight away. Without: say what DM Screen does. */
+	private async showPlayers() {
+		const t = this.plugin.playerTable();
+		if (!t) {
+			new PlayersModal(this.plugin.app).open();
+			return;
+		}
+		await t.share();
+		// DM Screen hears fights through the change event; send this one now so the players see it before the next turn
+		if (t.sharing) this.plugin.announce(this.ctx.sourcePath, this.enc);
+	}
+
 	private button(parent: HTMLElement, icon: string, label: string, cls: string, fn: () => void, aria?: string) {
 		const b = parent.createEl('button', { cls: `qi-btn ${cls}` });
 		const i = b.createSpan({ cls: 'qi-btn-icon' });
@@ -408,6 +441,21 @@ class Tracker {
 			fn();
 		};
 		return b;
+	}
+}
+
+class PlayersModal extends Modal {
+	onOpen() {
+		this.setTitle('Show this fight on your players\' phones');
+		const { contentEl } = this;
+		contentEl.createEl('p', { text: 'DM Screen, from the maker of Quick Initiative, puts this turn order on your players\' phones as you play: whose turn it is, the round, hit points and conditions. They open a link or scan a QR code in any phone browser, with nothing to install.' });
+		contentEl.createEl('p', { text: 'It costs $12 once, and every table works free for an hour so you can try it with your group. This plugin stays free either way.' });
+		const a = contentEl.createEl('a', { text: 'About DM Screen', cls: 'qi-players-link' });
+		a.setAttr('href', DM_SCREEN_URL);
+		contentEl.createEl('p', { cls: 'setting-item-description', text: 'You can hide this button in the plugin settings.' });
+	}
+	onClose() {
+		this.contentEl.empty();
 	}
 }
 
@@ -431,6 +479,11 @@ class SettingTab extends PluginSettingTab {
 				name: 'Skip creatures at 0 HP',
 				desc: 'Next turn skips creatures that are down. Players are never skipped.',
 				control: { type: 'toggle', key: 'skipDown', defaultValue: true },
+			},
+			{
+				name: 'Players button',
+				desc: 'Show the Players button in the tracker. With DM Screen installed it shares the fight to your players\' phones; without it, it says what DM Screen does.',
+				control: { type: 'toggle', key: 'playersButton', defaultValue: true },
 			},
 		];
 	}
