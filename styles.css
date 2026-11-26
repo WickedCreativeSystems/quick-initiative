@@ -57,6 +57,9 @@
 }
 .qi-tools {
 	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	margin-left: auto;
 	gap: 6px;
 }
 .qi-btn {
@@ -356,6 +359,10 @@
 
 .qi .qi-players {
 	margin-left: auto;
+}
+/* on a phone the toolbar is full: Players shows as its cast icon only (its aria-label still says Players) */
+.is-mobile .qi .qi-players > span:not(.qi-btn-icon) {
+	display: none;
 }
 .qi-players-link {
 	font-weight: 600;
